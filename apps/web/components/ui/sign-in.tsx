@@ -46,6 +46,7 @@ interface SignInPageProps {
   onGoogleSignIn?: () => void;
   onResetPassword?: () => void;
   onCreateAccount?: () => void;
+  captcha?: React.ReactNode;
 }
 
 // --- SUB-COMPONENTS ---
@@ -82,6 +83,7 @@ export const SignInPage: React.FC<SignInPageProps> = ({
   onGoogleSignIn,
   onResetPassword,
   onCreateAccount,
+  captcha,
 }) => {
   const [showPassword, setShowPassword] = useState(false);
 
@@ -152,6 +154,8 @@ export const SignInPage: React.FC<SignInPageProps> = ({
                   Esqueci minha senha
                 </a>
               </div>
+
+              {captcha}
 
               {errorMessage && (
                 <p className="animate-element text-sm text-danger">{errorMessage}</p>

@@ -8,6 +8,7 @@ import { EmailService } from './../src/auth/email.service';
 import { hashToken } from './../src/common/token.util';
 import { PrismaService } from './../src/prisma/prisma.service';
 import { assertTokensCompletos } from './helpers/assert-tokens-completos';
+import { gerarCpfValido, marcarEmailVerificado } from './helpers/cadastro';
 
 /**
  * Testa AuthService.criarTokenRedefinicao()/solicitarRedefinicaoSenha()/
@@ -19,7 +20,10 @@ describe('Recuperação de senha (e2e)', () => {
   let app: INestApplication;
   let authService: AuthService;
   let prisma: PrismaService;
-  let emailServiceMock: { enviarEmailRedefinicaoSenha: jest.Mock };
+  let emailServiceMock: {
+    enviarEmailRedefinicaoSenha: jest.Mock;
+    enviarEmailVerificacao: jest.Mock;
+  };
 
   const execucao = randomUUID().slice(0, 8);
   const restaurantesCriados: string[] = [];
@@ -28,6 +32,7 @@ describe('Recuperação de senha (e2e)', () => {
   beforeAll(async () => {
     emailServiceMock = {
       enviarEmailRedefinicaoSenha: jest.fn().mockResolvedValue(undefined),
+      enviarEmailVerificacao: jest.fn().mockResolvedValue(undefined),
     };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -63,7 +68,9 @@ describe('Recuperação de senha (e2e)', () => {
       nomeDono: `Dono ${sufixo}`,
       email,
       senha: 'senha-antiga-123',
+      documento: gerarCpfValido(),
     });
+    await marcarEmailVerificado(prisma, email);
     usuariosCriados.push(resultado.usuario.id);
     const usuario = await prisma.usuario.findUniqueOrThrow({
       where: { id: resultado.usuario.id },
@@ -123,6 +130,7 @@ describe('Recuperação de senha (e2e)', () => {
     await expect(
       authService.solicitarRedefinicaoSenha(
         `nao-existe-${execucao}@teste.comandai.dev`,
+        '127.0.0.1',
       ),
     ).resolves.toBeUndefined();
     expect(emailServiceMock.enviarEmailRedefinicaoSenha).not.toHaveBeenCalled();
@@ -131,7 +139,7 @@ describe('Recuperação de senha (e2e)', () => {
   it('solicitar redefinição para e-mail existente cria exatamente um token e envia o e-mail', async () => {
     const usuario = await criarUsuarioComSenha('solicita');
 
-    await authService.solicitarRedefinicaoSenha(usuario.email);
+    await authService.solicitarRedefinicaoSenha(usuario.email, '127.0.0.1');
 
     const total = await prisma.tokenRedefinicaoSenha.count({
       where: { usuarioId: usuario.id },

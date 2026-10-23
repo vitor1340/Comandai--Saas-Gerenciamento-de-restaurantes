@@ -6,6 +6,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { PrismaService } from './../src/prisma/prisma.service';
+import { gerarCpfValido, marcarEmailVerificado } from './helpers/cadastro';
 
 interface RespostaAuth {
   accessToken: string;
@@ -56,8 +57,13 @@ describe('Isolamento de tenant (e2e)', () => {
         nomeDono: 'Dono A',
         email: `dono-a-${execucao}@teste.comandai.dev`,
         senha: 'senha-teste-123',
+        documento: gerarCpfValido(),
       })
       .expect(201);
+    await marcarEmailVerificado(
+      prisma,
+      `dono-a-${execucao}@teste.comandai.dev`,
+    );
     const corpoA = registrarA.body as RespostaAuth;
     tokenA = corpoA.accessToken;
     usuarioAId = corpoA.usuario.id;
@@ -69,8 +75,13 @@ describe('Isolamento de tenant (e2e)', () => {
         nomeDono: 'Dono B',
         email: `dono-b-${execucao}@teste.comandai.dev`,
         senha: 'senha-teste-123',
+        documento: gerarCpfValido(),
       })
       .expect(201);
+    await marcarEmailVerificado(
+      prisma,
+      `dono-b-${execucao}@teste.comandai.dev`,
+    );
     const corpoB = registrarB.body as RespostaAuth;
     tokenB = corpoB.accessToken;
     usuarioBId = corpoB.usuario.id;

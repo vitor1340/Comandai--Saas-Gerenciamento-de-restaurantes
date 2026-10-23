@@ -8,6 +8,7 @@ import { RefreshTokenService } from './../src/auth/refresh-token.service';
 import { hashToken } from './../src/common/token.util';
 import { PrismaService } from './../src/prisma/prisma.service';
 import { assertTokensCompletos } from './helpers/assert-tokens-completos';
+import { gerarCpfValido, marcarEmailVerificado } from './helpers/cadastro';
 
 /**
  * Testa AuthService.refresh()/logout()/logoutTodasSessoes() e
@@ -55,7 +56,9 @@ describe('Refresh token e revogação de sessão (e2e)', () => {
       nomeDono: `Dono ${sufixo}`,
       email,
       senha: 'senha-123456',
+      documento: gerarCpfValido(),
     });
+    await marcarEmailVerificado(prisma, email);
     usuariosCriados.push(resultado.usuario.id);
     const usuario = await prisma.usuario.findUniqueOrThrow({
       where: { id: resultado.usuario.id },

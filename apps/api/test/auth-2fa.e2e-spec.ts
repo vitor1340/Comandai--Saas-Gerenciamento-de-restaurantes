@@ -10,6 +10,7 @@ import { RefreshTokenService } from './../src/auth/refresh-token.service';
 import { TwoFactorService } from './../src/auth/two-factor.service';
 import { descriptografar } from './../src/common/crypto.util';
 import { PrismaService } from './../src/prisma/prisma.service';
+import { gerarCpfValido, marcarEmailVerificado } from './helpers/cadastro';
 
 /**
  * Testa TwoFactorService e a integração com AuthService.login()/
@@ -64,7 +65,9 @@ describe('Autenticação de dois fatores (e2e)', () => {
       nomeDono: `Dono ${sufixo}`,
       email,
       senha: 'senha-123456',
+      documento: gerarCpfValido(),
     });
+    await marcarEmailVerificado(prisma, email);
     usuariosCriados.push(resultado.usuario.id);
     const usuario = await prisma.usuario.findUniqueOrThrow({
       where: { id: resultado.usuario.id },

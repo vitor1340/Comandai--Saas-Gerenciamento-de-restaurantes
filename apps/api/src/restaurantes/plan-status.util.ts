@@ -12,7 +12,7 @@ interface DadosStatusPlano {
 
 /**
  * Único lugar que decide se um restaurante ainda tem acesso ao app.
- * Usado tanto pelo PlanoAtivoGuard (backend) quanto por RestaurantesService
+ * Usado tanto pelo ContaLiberadaGuard (backend) quanto por RestaurantesService
  * (pro frontend consultar via /restaurantes/me) — não duplicar essa conta
  * de data em outro lugar.
  */

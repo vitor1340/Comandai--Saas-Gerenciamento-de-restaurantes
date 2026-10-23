@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { NAV_ITEMS } from './nav-items';
+import { NAV_ITEM_ADMIN, NAV_ITEMS } from './nav-items';
 import { RestaurantSwitcher } from './RestaurantSwitcher';
 import { HelpCard } from './HelpCard';
 import { Dock, DockItem, DockIcon } from '@/components/ui/dock';
@@ -13,11 +13,14 @@ export function Sidebar({
   restauranteNome,
   restaurantePlano,
   pedidosNovosCount,
+  superAdmin,
 }: {
   restauranteNome: string;
   restaurantePlano: string;
   pedidosNovosCount: number;
+  superAdmin: boolean;
 }) {
+  const itens = superAdmin ? [...NAV_ITEMS, NAV_ITEM_ADMIN] : NAV_ITEMS;
   const pathname = usePathname();
   const menuMobileAberto = useUiStore((state) => state.menuMobileAberto);
   const fecharMenuMobile = useUiStore((state) => state.fecharMenuMobile);
@@ -47,7 +50,7 @@ export function Sidebar({
       <RestaurantSwitcher nome={restauranteNome} plano={restaurantePlano} />
 
       <Dock className="mt-6 flex-1 space-y-1 overflow-y-auto">
-        {NAV_ITEMS.map((item) => {
+        {itens.map((item) => {
           const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
           const badge = item.badgeKey === 'pedidosNovos' ? pedidosNovosCount : undefined;
 

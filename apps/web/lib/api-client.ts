@@ -8,6 +8,9 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    // Ex.: EMAIL_NAO_VERIFICADO, DOCUMENTO_PENDENTE, CONTA_SUSPENSA (ver
+    // ContaLiberadaGuard na API).
+    public codigo?: string,
   ) {
     super(message);
   }
@@ -44,23 +47,43 @@ function encerrarSessaoExpirada() {
   clearSessionCookie();
 }
 
-// O painel deixa o usuário navegar mesmo sem plano ativo (ver PlanoStatusBanner)
-// — só ações de escrita são bloqueadas (402, PlanoAtivoGuard). Por isso não
+// O painel deixa o usuário navegar mesmo sem plano ativo (ver ContaStatusBanner)
+// — só ações de escrita são bloqueadas (402/403, ContaLiberadaGuard). Por isso não
 // redireciona pra /planos aqui: só repassa a mensagem amigável que o backend
 // já manda (ex.: "Seu teste grátis acabou...") pra quem chamou decidir como
 // mostrar o erro, em vez de um texto genérico de HTTP.
 async function lancarErroDaResposta(response: Response, path: string): Promise<never> {
-  let mensagem = `Falha ao chamar ${path} (${response.status})`;
+  const corpo = await corpoJson(response);
+  const mensagem = extrairMensagem(corpo) ?? `Falha ao chamar ${path} (${response.status})`;
+  const codigo =
+    corpo && typeof corpo === 'object' && 'codigo' in corpo && typeof corpo.codigo === 'string'
+      ? corpo.codigo
+      : undefined;
+  throw new ApiError(mensagem, response.status, codigo);
+}
+
+async function corpoJson(response: Response): Promise<unknown> {
   try {
-    const corpo: unknown = await response.clone().json();
-    if (corpo && typeof corpo === 'object' && 'message' in corpo) {
-      const valor = (corpo as { message: unknown }).message;
-      if (typeof valor === 'string') mensagem = valor;
-    }
+    return await response.clone().json();
   } catch {
-    // corpo não é JSON (ou já foi consumido) — mantém a mensagem genérica
+    // corpo não é JSON (ou já foi consumido)
+    return null;
   }
-  throw new ApiError(mensagem, response.status);
+}
+
+function extrairMensagem(corpo: unknown): string | null {
+  if (corpo && typeof corpo === 'object' && 'message' in corpo) {
+    const valor = (corpo as { message: unknown }).message;
+    if (typeof valor === 'string') return valor;
+    // ValidationPipe devolve uma lista — mostra a primeira.
+    if (Array.isArray(valor) && typeof valor[0] === 'string') return valor[0];
+  }
+  return null;
+}
+
+/** Mensagem amigável que a API mandou no corpo do erro, se houver. */
+export async function mensagemDeErro(response: Response): Promise<string | null> {
+  return extrairMensagem(await corpoJson(response));
 }
 
 export async function apiFetch<T>(

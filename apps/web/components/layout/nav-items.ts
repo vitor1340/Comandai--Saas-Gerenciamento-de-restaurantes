@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { LayoutDashboard, ClipboardList, BookOpen, Settings } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, BookOpen, Settings, ShieldCheck } from 'lucide-react';
 
 export interface NavItem {
   href: string;
@@ -17,3 +17,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/cardapio', label: 'Cardápio', icon: BookOpen },
   { href: '/configuracoes', label: 'Configurações', icon: Settings },
 ];
+
+// Só aparece pra superAdmin (admin da plataforma) — a página e a API
+// checam de novo, o menu é só conveniência.
+export const NAV_ITEM_ADMIN: NavItem = { href: '/admin', label: 'Admin', icon: ShieldCheck };

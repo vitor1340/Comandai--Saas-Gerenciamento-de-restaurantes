@@ -20,6 +20,8 @@ export interface UsuarioDTO {
 export interface UsuarioMeDTO extends UsuarioDTO {
   restauranteId: string;
   doisFatoresAtivo: boolean;
+  emailVerificado: boolean;
+  superAdmin: boolean;
 }
 
 export interface LoginResponseDTO {
@@ -78,6 +80,43 @@ export interface RestauranteMeDTO {
   pedidosNovosCount: number;
   mercadoPagoConectado: boolean;
   faixaAssinatura: FaixaAssinatura | null;
+  // Cadastro via Google ainda sem CPF/CNPJ (onboarding pendente).
+  documentoPendente: boolean;
+  suspenso: boolean;
+}
+
+export interface CompletarCadastroDTO {
+  documento: string;
+  nomeRestaurante: string;
+}
+
+export interface AdminRestauranteDTO {
+  id: string;
+  nome: string;
+  slug: string;
+  documento: string | null;
+  emailDono: string | null;
+  emailVerificado: boolean;
+  loginGoogle: boolean;
+  statusPlano: StatusPlano;
+  trialEndsAt: string;
+  suspenso: boolean;
+  ipCadastro: string | null;
+  pedidosCount: number;
+  produtosCount: number;
+  createdAt: string;
+}
+
+export interface AdminRestaurantesPaginaDTO {
+  total: number;
+  pagina: number;
+  itensPorPagina: number;
+  itens: AdminRestauranteDTO[];
+}
+
+export interface AtualizarRestauranteAdminDTO {
+  suspenso?: boolean;
+  estenderTrialDias?: number;
 }
 
 export type FaixaAssinatura = 'ATE_150' | 'DE_151_A_250' | 'ACIMA_250';

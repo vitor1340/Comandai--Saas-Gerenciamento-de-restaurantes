@@ -11,6 +11,7 @@ import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { MercadoPagoClient } from './../src/pagamentos/mercado-pago.client';
 import { PrismaService } from './../src/prisma/prisma.service';
+import { gerarCpfValido, marcarEmailVerificado } from './helpers/cadastro';
 
 interface RespostaAuth {
   accessToken: string;
@@ -29,7 +30,7 @@ interface RestauranteMe {
  * overrideProvider cobre os dois módulos. O que este teste cobre é a lógica
  * que o Comandaí é responsável por: persistência do preapproval/faixa,
  * mapeamento de status do webhook de assinatura, e o bloqueio de acesso
- * (PlanoAtivoGuard) quando a assinatura é cancelada.
+ * (ContaLiberadaGuard) quando a assinatura é cancelada.
  */
 describe('Assinatura recorrente via Mercado Pago (e2e)', () => {
   let app: INestApplication<App>;
@@ -94,8 +95,13 @@ describe('Assinatura recorrente via Mercado Pago (e2e)', () => {
         nomeDono: 'Dono Assinaturas',
         email: `dono-assinaturas-${execucao}@teste.comandai.dev`,
         senha: 'senha-teste-123',
+        documento: gerarCpfValido(),
       })
       .expect(201);
+    await marcarEmailVerificado(
+      prisma,
+      `dono-assinaturas-${execucao}@teste.comandai.dev`,
+    );
     token = (registrar.body as RespostaAuth).accessToken;
 
     const me = await request(app.getHttpServer())
@@ -328,8 +334,13 @@ describe('Assinatura recorrente via Mercado Pago (e2e)', () => {
           nomeDono: 'Dono Sem Assinatura',
           email: `dono-sem-assinatura-${execucao}@teste.comandai.dev`,
           senha: 'senha-teste-123',
+          documento: gerarCpfValido(),
         })
         .expect(201);
+      await marcarEmailVerificado(
+        prisma,
+        `dono-sem-assinatura-${execucao}@teste.comandai.dev`,
+      );
       const tokenSemAssinatura = (registrar.body as RespostaAuth).accessToken;
       const meSemAssinatura = await request(app.getHttpServer())
         .get('/api/restaurantes/me')

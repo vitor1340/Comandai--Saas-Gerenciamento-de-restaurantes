@@ -16,7 +16,7 @@ import type { AuthenticatedUser } from '../auth/jwt.types';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { exigirVariavelAmbiente } from '../common/env.util';
-import { PlanoAtivoGuard } from '../restaurantes/plano-ativo.guard';
+import { ContaLiberadaGuard } from '../restaurantes/conta-liberada.guard';
 import { PagamentosService } from './pagamentos.service';
 
 // Conectar/desconectar a conta Mercado Pago do restaurante é decisão de
@@ -29,7 +29,7 @@ export class PagamentosController {
 
   constructor(private readonly pagamentosService: PagamentosService) {}
 
-  @UseGuards(JwtAuthGuard, PlanoAtivoGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, ContaLiberadaGuard, RolesGuard)
   @Roles(CargoUsuario.DONO)
   @Get('conectar')
   async conectar(@CurrentUser() user: AuthenticatedUser) {
@@ -54,7 +54,7 @@ export class PagamentosController {
     }
   }
 
-  @UseGuards(JwtAuthGuard, PlanoAtivoGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, ContaLiberadaGuard, RolesGuard)
   @Roles(CargoUsuario.DONO)
   @HttpCode(200)
   @Delete('conectar')

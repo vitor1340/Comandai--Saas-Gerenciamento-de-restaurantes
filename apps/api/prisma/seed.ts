@@ -256,6 +256,9 @@ async function main() {
       slug: 'brasa-e-ponto',
       plano: 'PRO',
       aberto: true,
+      // CPF fictício (válido só no dígito verificador) — sem documento o
+      // ContaLiberadaGuard trava o painel no onboarding.
+      documento: '52998224725',
     },
   });
 
@@ -268,6 +271,7 @@ async function main() {
       senhaHash,
       cargo: 'DONO',
       restauranteId: restaurante.id,
+      emailVerificadoEm: new Date(),
     },
   });
 

@@ -12,6 +12,7 @@ import { AppModule } from './../src/app.module';
 import { MercadoPagoClient } from './../src/pagamentos/mercado-pago.client';
 import { PagamentosService } from './../src/pagamentos/pagamentos.service';
 import { PrismaService } from './../src/prisma/prisma.service';
+import { gerarCpfValido, marcarEmailVerificado } from './helpers/cadastro';
 
 interface RespostaAuth {
   accessToken: string;
@@ -108,8 +109,13 @@ describe('Pagamentos via Mercado Pago (e2e)', () => {
         nomeDono: 'Dono Pagamentos',
         email: `dono-pagamentos-${execucao}@teste.comandai.dev`,
         senha: 'senha-teste-123',
+        documento: gerarCpfValido(),
       })
       .expect(201);
+    await marcarEmailVerificado(
+      prisma,
+      `dono-pagamentos-${execucao}@teste.comandai.dev`,
+    );
     token = (registrar.body as RespostaAuth).accessToken;
 
     const me = await request(app.getHttpServer())
@@ -162,8 +168,13 @@ describe('Pagamentos via Mercado Pago (e2e)', () => {
         nomeDono: 'Dono Sem MP',
         email: `dono-sem-mp-${execucao}@teste.comandai.dev`,
         senha: 'senha-teste-123',
+        documento: gerarCpfValido(),
       })
       .expect(201);
+    await marcarEmailVerificado(
+      prisma,
+      `dono-sem-mp-${execucao}@teste.comandai.dev`,
+    );
     tokenSemMp = (registrarSemMp.body as RespostaAuth).accessToken;
     const meSemMp = await request(app.getHttpServer())
       .get('/api/restaurantes/me')

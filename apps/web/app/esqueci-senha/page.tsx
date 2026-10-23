@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { AuthBrandHeader } from '@/components/shared/AuthBrandHeader';
+import { Turnstile, TURNSTILE_ATIVO } from '@/components/auth/Turnstile';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
 
@@ -11,17 +12,25 @@ export default function EsqueciSenhaPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [enviado, setEnviado] = useState(false);
   const [carregando, setCarregando] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileKey, setTurnstileKey] = useState(0);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setErro(null);
+
+    if (TURNSTILE_ATIVO && !turnstileToken) {
+      setErro('Aguarde a verificação anti-robô terminar.');
+      return;
+    }
+
     setCarregando(true);
 
     try {
       const response = await fetch(`${API_URL}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, turnstileToken: turnstileToken ?? undefined }),
       });
 
       if (!response.ok) {
@@ -35,6 +44,9 @@ export default function EsqueciSenhaPage() {
       setErro('Não foi possível conectar ao servidor.');
     } finally {
       setCarregando(false);
+      // Token do Turnstile é de uso único.
+      setTurnstileToken(null);
+      setTurnstileKey((k) => k + 1);
     }
   }
 
@@ -72,6 +84,8 @@ export default function EsqueciSenhaPage() {
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm text-ink-primary outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
                 />
               </div>
+
+              <Turnstile key={turnstileKey} onToken={setTurnstileToken} />
 
               {erro && <p className="text-sm text-danger">{erro}</p>}
 

@@ -10,7 +10,12 @@ import { JwtService } from '@nestjs/jwt';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
-import { CargoUsuario, PlanoRestaurante } from '../../generated/prisma/client';
+import {
+  CargoUsuario,
+  PlanoRestaurante,
+  Prisma,
+} from '../../generated/prisma/client';
+import { normalizarDocumento } from '../common/documento.util';
 import { exigirVariavelAmbiente } from '../common/env.util';
 import { gerarSlugUnico } from '../common/slugify.util';
 import { gerarTokenAleatorio, hashToken } from '../common/token.util';
@@ -20,6 +25,7 @@ import { EmailService } from './email.service';
 import { UsuarioGoogle } from './google.types';
 import { JwtPayload, JwtPayloadParcial2fa } from './jwt.types';
 import { RefreshTokenMeta, RefreshTokenService } from './refresh-token.service';
+import { TurnstileService } from './turnstile.service';
 import { TwoFactorService } from './two-factor.service';
 
 const TTL_TOKEN_PARCIAL_2FA = '5m';
@@ -52,6 +58,27 @@ interface CodigoTrocaGoogle {
 
 const TTL_CODIGO_TROCA_MS = 60_000;
 const TTL_TOKEN_REDEFINICAO_MS = 30 * 60_000;
+const TTL_TOKEN_VERIFICACAO_EMAIL_MS = 24 * 60 * 60_000;
+
+// Genérica de propósito: não confirma de quem é o documento.
+const MENSAGEM_DOCUMENTO_EM_USO =
+  'Já existe um restaurante cadastrado com este CPF/CNPJ. Se ele é seu, entre com a conta original.';
+
+/**
+ * Campos envolvidos numa violação de unicidade (P2002) do Prisma, ou null
+ * se o erro for outro. O formato de `meta` muda entre engines/adapters
+ * (`target` no engine nativo, `driverAdapterError` com o adapter pg), então
+ * procura o nome do campo no meta serializado em vez de depender da forma.
+ */
+function camposViolacaoUnica(erro: unknown): string | null {
+  if (
+    erro instanceof Prisma.PrismaClientKnownRequestError &&
+    erro.code === 'P2002'
+  ) {
+    return JSON.stringify(erro.meta ?? {});
+  }
+  return null;
+}
 
 @Injectable()
 export class AuthService {
@@ -64,6 +91,7 @@ export class AuthService {
     private readonly emailService: EmailService,
     private readonly refreshTokenService: RefreshTokenService,
     private readonly twoFactorService: TwoFactorService,
+    private readonly turnstileService: TurnstileService,
   ) {}
 
   private async emitirTokenParcial2fa(usuarioId: string): Promise<string> {
@@ -110,7 +138,16 @@ export class AuthService {
     };
   }
 
-  async login(email: string, senha: string, meta?: RefreshTokenMeta) {
+  async login(
+    email: string,
+    senha: string,
+    meta?: RefreshTokenMeta,
+    turnstileToken?: string,
+  ) {
+    await this.turnstileService.verificar(
+      turnstileToken,
+      meta?.ip ?? 'desconhecido',
+    );
     await this.verificarLockoutPorEmail(email);
 
     const usuario = await this.prisma.usuario.findUnique({ where: { email } });
@@ -210,6 +247,11 @@ export class AuthService {
   }
 
   async registrar(dto: RegistrarDto, meta?: RefreshTokenMeta) {
+    await this.turnstileService.verificar(
+      dto.turnstileToken,
+      meta?.ip ?? 'desconhecido',
+    );
+
     const emailEmUso = await this.prisma.usuario.findUnique({
       where: { email: dto.email },
     });
@@ -217,42 +259,99 @@ export class AuthService {
       throw new ConflictException('Já existe uma conta com este e-mail');
     }
 
-    const slug = await gerarSlugUnico(
-      dto.nomeRestaurante,
-      async (candidato) => {
-        const existente = await this.prisma.restaurante.findUnique({
-          where: { slug: candidato },
-        });
-        return existente !== null;
-      },
-    );
+    const documento = normalizarDocumento(dto.documento);
+    const documentoEmUso = await this.prisma.restaurante.findUnique({
+      where: { documento },
+      select: { id: true },
+    });
+    if (documentoEmUso) {
+      throw new ConflictException(MENSAGEM_DOCUMENTO_EM_USO);
+    }
 
     const senhaHash = await bcrypt.hash(dto.senha, 10);
 
-    const usuario = await this.prisma.$transaction(async (tx) => {
-      const restaurante = await tx.restaurante.create({
-        data: {
-          nome: dto.nomeRestaurante,
-          slug,
-          plano: PlanoRestaurante.FREE,
-          trialEndsAt: new Date(
-            Date.now() + DIAS_TESTE_GRATIS * 24 * 60 * 60 * 1000,
-          ),
-        },
-      });
-
-      return tx.usuario.create({
-        data: {
-          nome: dto.nomeDono,
-          email: dto.email,
-          senhaHash,
-          cargo: CargoUsuario.DONO,
-          restauranteId: restaurante.id,
-        },
-      });
+    const usuario = await this.criarRestauranteComDono({
+      nomeRestaurante: dto.nomeRestaurante,
+      documento,
+      ipCadastro: meta?.ip ?? null,
+      dono: {
+        nome: dto.nomeDono,
+        email: dto.email,
+        senhaHash,
+      },
     });
 
+    await this.enviarEmailVerificacao(usuario.id, usuario.email);
+
     return this.emitirTokens(usuario, meta);
+  }
+
+  /**
+   * Cria restaurante + dono numa transação. A checagem de slug/documento
+   * antes do insert não é atômica — dois cadastros simultâneos podem passar
+   * por ela juntos — então a violação de unicidade (P2002) é tratada aqui:
+   * slug repetido tenta de novo com outro slug, documento repetido vira 409.
+   */
+  private async criarRestauranteComDono(dados: {
+    nomeRestaurante: string;
+    documento: string | null;
+    ipCadastro: string | null;
+    dono: {
+      nome: string;
+      email: string;
+      senhaHash?: string;
+      googleId?: string;
+      emailVerificadoEm?: Date;
+    };
+  }) {
+    for (let tentativa = 0; ; tentativa++) {
+      const slug = await gerarSlugUnico(
+        dados.nomeRestaurante,
+        async (candidato) => {
+          const existente = await this.prisma.restaurante.findUnique({
+            where: { slug: candidato },
+          });
+          return existente !== null;
+        },
+      );
+
+      try {
+        return await this.prisma.$transaction(async (tx) => {
+          const restaurante = await tx.restaurante.create({
+            data: {
+              nome: dados.nomeRestaurante,
+              slug,
+              documento: dados.documento,
+              ipCadastro: dados.ipCadastro,
+              plano: PlanoRestaurante.FREE,
+              trialEndsAt: new Date(
+                Date.now() + DIAS_TESTE_GRATIS * 24 * 60 * 60 * 1000,
+              ),
+            },
+          });
+
+          return tx.usuario.create({
+            data: {
+              ...dados.dono,
+              cargo: CargoUsuario.DONO,
+              restauranteId: restaurante.id,
+            },
+          });
+        });
+      } catch (erro) {
+        const campos = camposViolacaoUnica(erro);
+        if (campos?.includes('documento')) {
+          throw new ConflictException(MENSAGEM_DOCUMENTO_EM_USO);
+        }
+        if (campos?.includes('email')) {
+          throw new ConflictException('Já existe uma conta com este e-mail');
+        }
+        if (campos?.includes('slug') && tentativa < 3) {
+          continue;
+        }
+        throw erro;
+      }
+    }
   }
 
   async loginOuRegistrarComGoogle(
@@ -267,44 +366,47 @@ export class AuthService {
       const porEmail = await this.prisma.usuario.findUnique({
         where: { email: dados.email },
       });
-      if (porEmail) {
+      if (porEmail && porEmail.emailVerificadoEm) {
         usuario = await this.prisma.usuario.update({
           where: { id: porEmail.id },
           data: { googleId: dados.googleId },
         });
+      } else if (porEmail) {
+        // Conta com senha cujo e-mail nunca foi confirmado: quem a criou
+        // pode não ser o dono do e-mail (alguém cadastrou o e-mail da
+        // vítima antes dela). O Google prova a posse do e-mail, então a
+        // conta passa pro dono legítimo — a senha definida por quem
+        // cadastrou é descartada e todas as sessões abertas são revogadas.
+        usuario = await this.prisma.usuario.update({
+          where: { id: porEmail.id },
+          data: {
+            googleId: dados.googleId,
+            senhaHash: null,
+            emailVerificadoEm: new Date(),
+            doisFatoresAtivo: false,
+            totpSecret: null,
+          },
+        });
+        await this.prisma.codigoBackupDoisFatores.deleteMany({
+          where: { usuarioId: usuario.id },
+        });
+        await this.refreshTokenService.revogarTodosDoUsuario(usuario.id);
       }
     }
 
     if (!usuario) {
-      const nomeRestaurante = `Restaurante de ${dados.nome}`;
-      const slug = await gerarSlugUnico(nomeRestaurante, async (candidato) => {
-        const existente = await this.prisma.restaurante.findUnique({
-          where: { slug: candidato },
-        });
-        return existente !== null;
-      });
-
-      usuario = await this.prisma.$transaction(async (tx) => {
-        const restaurante = await tx.restaurante.create({
-          data: {
-            nome: nomeRestaurante,
-            slug,
-            plano: PlanoRestaurante.FREE,
-            trialEndsAt: new Date(
-              Date.now() + DIAS_TESTE_GRATIS * 24 * 60 * 60 * 1000,
-            ),
-          },
-        });
-
-        return tx.usuario.create({
-          data: {
-            nome: dados.nome,
-            email: dados.email,
-            googleId: dados.googleId,
-            cargo: CargoUsuario.DONO,
-            restauranteId: restaurante.id,
-          },
-        });
+      // Sem documento: o ContaLiberadaGuard bloqueia escrita até o dono
+      // completar o onboarding (PATCH /restaurantes/me/documento).
+      usuario = await this.criarRestauranteComDono({
+        nomeRestaurante: `Restaurante de ${dados.nome}`.slice(0, 80),
+        documento: null,
+        ipCadastro: meta?.ip ?? null,
+        dono: {
+          nome: dados.nome.slice(0, 100),
+          email: dados.email,
+          googleId: dados.googleId,
+          emailVerificadoEm: new Date(),
+        },
       });
     }
 
@@ -394,7 +496,76 @@ export class AuthService {
     return token;
   }
 
-  async solicitarRedefinicaoSenha(email: string): Promise<void> {
+  async enviarEmailVerificacao(
+    usuarioId: string,
+    email: string,
+  ): Promise<void> {
+    await this.prisma.tokenVerificacaoEmail.deleteMany({
+      where: { usuarioId },
+    });
+
+    const token = gerarTokenAleatorio();
+    await this.prisma.tokenVerificacaoEmail.create({
+      data: {
+        usuarioId,
+        tokenHash: hashToken(token),
+        expiraEm: new Date(Date.now() + TTL_TOKEN_VERIFICACAO_EMAIL_MS),
+      },
+    });
+
+    const origemFrontend = exigirVariavelAmbiente('CORS_ORIGIN');
+    const link = `${origemFrontend}/verificar-email?token=${token}`;
+
+    // Falha no envio não derruba o cadastro — o dono pode pedir reenvio
+    // pelo banner do painel.
+    try {
+      await this.emailService.enviarEmailVerificacao(email, link);
+    } catch (erro) {
+      this.logger.error(
+        `Falha ao enviar e-mail de verificação para ${email}`,
+        erro instanceof Error ? erro.stack : erro,
+      );
+    }
+  }
+
+  async reenviarEmailVerificacao(usuarioId: string): Promise<void> {
+    const usuario = await this.prisma.usuario.findUniqueOrThrow({
+      where: { id: usuarioId },
+    });
+    if (usuario.emailVerificadoEm) {
+      return;
+    }
+    await this.enviarEmailVerificacao(usuario.id, usuario.email);
+  }
+
+  async verificarEmail(token: string): Promise<void> {
+    const registro = await this.prisma.tokenVerificacaoEmail.findUnique({
+      where: { tokenHash: hashToken(token) },
+    });
+
+    if (!registro || registro.expiraEm < new Date()) {
+      throw new UnauthorizedException(
+        'Link de verificação inválido ou expirado. Peça um novo pelo painel.',
+      );
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.usuario.update({
+        where: { id: registro.usuarioId },
+        data: { emailVerificadoEm: new Date() },
+      }),
+      this.prisma.tokenVerificacaoEmail.deleteMany({
+        where: { usuarioId: registro.usuarioId },
+      }),
+    ]);
+  }
+
+  async solicitarRedefinicaoSenha(
+    email: string,
+    ip: string,
+    turnstileToken?: string,
+  ): Promise<void> {
+    await this.turnstileService.verificar(turnstileToken, ip);
     const usuario = await this.prisma.usuario.findUnique({ where: { email } });
     if (!usuario) {
       return;
@@ -448,6 +619,8 @@ export class AuthService {
       cargo: usuario.cargo,
       restauranteId: usuario.restauranteId,
       doisFatoresAtivo: usuario.doisFatoresAtivo,
+      emailVerificado: usuario.emailVerificadoEm !== null,
+      superAdmin: usuario.superAdmin,
     };
   }
 }

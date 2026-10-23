@@ -10,6 +10,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
+import { obterIpCliente } from '../common/client-ip.util';
 import { exigirVariavelAmbiente } from '../common/env.util';
 import { AuthService } from './auth.service';
 import { Ativar2faDto } from './dto/ativar-2fa.dto';
@@ -21,6 +22,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegistrarDto } from './dto/registrar.dto';
 import { TrocarCodigoGoogleDto } from './dto/trocar-codigo-google.dto';
 import { Verificar2faDto } from './dto/verificar-2fa.dto';
+import { VerificarEmailDto } from './dto/verificar-email.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser } from './current-user.decorator';
 import type { AuthenticatedUser } from './jwt.types';
@@ -30,10 +32,12 @@ import { TwoFactorService } from './two-factor.service';
 
 const LIMITE_TENTATIVAS_AUTH = { default: { limit: 5, ttl: 60_000 } };
 
+const LIMITE_REENVIO_VERIFICACAO = { default: { limit: 1, ttl: 60_000 } };
+
 function extrairMeta(req: Request): RefreshTokenMeta {
   return {
     userAgent: req.headers['user-agent'],
-    ip: req.ip,
+    ip: obterIpCliente(req),
   };
 }
 
@@ -47,13 +51,35 @@ export class AuthController {
   @Throttle(LIMITE_TENTATIVAS_AUTH)
   @Post('login')
   login(@Body() dto: LoginDto, @Req() req: Request) {
-    return this.authService.login(dto.email, dto.senha, extrairMeta(req));
+    return this.authService.login(
+      dto.email,
+      dto.senha,
+      extrairMeta(req),
+      dto.turnstileToken,
+    );
   }
 
   @Throttle(LIMITE_TENTATIVAS_AUTH)
   @Post('registrar')
   registrar(@Body() dto: RegistrarDto, @Req() req: Request) {
     return this.authService.registrar(dto, extrairMeta(req));
+  }
+
+  @Throttle(LIMITE_TENTATIVAS_AUTH)
+  @Post('verificar-email')
+  async verificarEmail(@Body() dto: VerificarEmailDto) {
+    await this.authService.verificarEmail(dto.token);
+    return { mensagem: 'E-mail confirmado.' };
+  }
+
+  @Throttle(LIMITE_REENVIO_VERIFICACAO)
+  @UseGuards(JwtAuthGuard)
+  @Post('reenviar-verificacao')
+  async reenviarVerificacao(@CurrentUser() user: AuthenticatedUser) {
+    await this.authService.reenviarEmailVerificacao(user.userId);
+    return {
+      mensagem: 'Se o e-mail ainda não foi confirmado, enviamos um novo link.',
+    };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -160,8 +186,12 @@ export class AuthController {
 
   @Throttle(LIMITE_TENTATIVAS_AUTH)
   @Post('forgot-password')
-  async esqueciSenha(@Body() dto: EsqueciSenhaDto) {
-    await this.authService.solicitarRedefinicaoSenha(dto.email);
+  async esqueciSenha(@Body() dto: EsqueciSenhaDto, @Req() req: Request) {
+    await this.authService.solicitarRedefinicaoSenha(
+      dto.email,
+      obterIpCliente(req),
+      dto.turnstileToken,
+    );
     return {
       mensagem:
         'Se este e-mail estiver cadastrado, você receberá um link para redefinir sua senha.',

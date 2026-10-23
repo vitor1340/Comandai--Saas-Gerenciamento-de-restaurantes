@@ -12,6 +12,7 @@ import {
   TipoEntrega,
 } from './../generated/prisma/client';
 import { addDays, variacaoPercentual } from './../src/common/date.util';
+import { gerarCpfValido, marcarEmailVerificado } from './helpers/cadastro';
 
 interface RespostaAuth {
   accessToken: string;
@@ -90,8 +91,13 @@ describe('Dashboard (e2e)', () => {
         nomeDono: 'Dono Dashboard',
         email: `dono-dashboard-${execucao}@teste.comandai.dev`,
         senha: 'senha-teste-123',
+        documento: gerarCpfValido(),
       })
       .expect(201);
+    await marcarEmailVerificado(
+      prisma,
+      `dono-dashboard-${execucao}@teste.comandai.dev`,
+    );
     const corpoA = registrarA.body as RespostaAuth;
     tokenA = corpoA.accessToken;
     usuarioAId = corpoA.usuario.id;
@@ -107,8 +113,13 @@ describe('Dashboard (e2e)', () => {
         nomeDono: 'Dono B',
         email: `dono-dashboard-b-${execucao}@teste.comandai.dev`,
         senha: 'senha-teste-123',
+        documento: gerarCpfValido(),
       })
       .expect(201);
+    await marcarEmailVerificado(
+      prisma,
+      `dono-dashboard-b-${execucao}@teste.comandai.dev`,
+    );
     const corpoB = registrarB.body as RespostaAuth;
     usuarioBId = corpoB.usuario.id;
     const usuarioB = await prisma.usuario.findUniqueOrThrow({

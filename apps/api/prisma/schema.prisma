@@ -13,9 +13,8 @@ enum PlanoRestaurante {
   PRO
 }
 
-// past_due e canceled ainda não são produzidos por nenhum fluxo (entram
-// no prompt 3, cobrança recorrente) — já ficam previstos no enum pra não
-// exigir outra migration quando a cobrança de verdade for implementada.
+// PAST_DUE e CANCELED vêm do webhook de assinatura do Mercado Pago (ver
+// mapearStatusAssinaturaMercadoPago em assinaturas.service.ts).
 enum StatusAssinatura {
   TRIALING
   ACTIVE
@@ -74,7 +73,7 @@ model Restaurante {
   id                   String           @id @default(uuid())
   nome                 String
   slug                 String           @unique
-  plano                PlanoRestaurante @default(PRO)
+  plano                PlanoRestaurante @default(FREE)
   statusAssinatura     StatusAssinatura @default(TRIALING)
   trialEndsAt          DateTime         @default(dbgenerated("(now() + interval '7 days')"))
   aberto               Boolean          @default(true)
@@ -86,6 +85,13 @@ model Restaurante {
   endereco             String?
   horarioFuncionamento String?
   diferenciais         String[]         @default([])
+  // CPF (11) ou CNPJ (14), só dígitos. Único pra impedir o mesmo dono de
+  // abrir vários restaurantes só pra renovar o teste grátis. Nulo em
+  // cadastros via Google até o onboarding (ContaLiberadaGuard bloqueia
+  // escrita enquanto estiver nulo).
+  documento            String?          @unique
+  suspensoEm           DateTime?
+  ipCadastro           String?
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
 
@@ -128,12 +134,17 @@ model Usuario {
   email                    String                    @unique
   senhaHash                String?
   googleId                 String?                   @unique
+  emailVerificadoEm        DateTime?
+  // Admin da plataforma (dono do Comandaí), não do restaurante. Só é setado
+  // direto no banco — não existe rota que promova alguém.
+  superAdmin               Boolean                   @default(false)
   cargo                    CargoUsuario              @default(DONO)
   restauranteId            String
   restaurante              Restaurante               @relation(fields: [restauranteId], references: [id])
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   tokensRedefinicaoSenha   TokenRedefinicaoSenha[]
+  tokensVerificacaoEmail   TokenVerificacaoEmail[]
   refreshTokens            RefreshToken[]
   doisFatoresAtivo         Boolean                   @default(false)
   totpSecret               String?
@@ -152,6 +163,17 @@ model CodigoBackupDoisFatores {
 }
 
 model TokenRedefinicaoSenha {
+  id        String   @id @default(uuid())
+  usuarioId String
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiraEm  DateTime
+  createdAt DateTime @default(now())
+
+  @@index([usuarioId])
+}
+
+model TokenVerificacaoEmail {
   id        String   @id @default(uuid())
   usuarioId String
   usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)

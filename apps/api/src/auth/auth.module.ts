@@ -8,6 +8,7 @@ import { EmailService } from './email.service';
 import { GoogleStrategy } from './google.strategy';
 import { JwtStrategy } from './jwt.strategy';
 import { RefreshTokenService } from './refresh-token.service';
+import { TurnstileService } from './turnstile.service';
 import { TwoFactorService } from './two-factor.service';
 
 @Module({
@@ -29,6 +30,7 @@ import { TwoFactorService } from './two-factor.service';
     EmailService,
     RefreshTokenService,
     TwoFactorService,
+    TurnstileService,
   ],
   exports: [JwtModule, RefreshTokenService],
 })

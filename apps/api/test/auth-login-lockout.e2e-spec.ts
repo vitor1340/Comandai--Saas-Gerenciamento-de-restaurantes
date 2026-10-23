@@ -10,6 +10,7 @@ import { AppModule } from './../src/app.module';
 import { AuthService } from './../src/auth/auth.service';
 import { PrismaService } from './../src/prisma/prisma.service';
 import { assertTokensCompletos } from './helpers/assert-tokens-completos';
+import { gerarCpfValido, marcarEmailVerificado } from './helpers/cadastro';
 
 /**
  * Testa AuthService.login() direto (sem HTTP), justamente pra não esbarrar
@@ -54,7 +55,9 @@ describe('Lockout de login por e-mail (e2e)', () => {
       nomeDono: `Dono ${sufixo}`,
       email,
       senha: 'senha-123456',
+      documento: gerarCpfValido(),
     });
+    await marcarEmailVerificado(prisma, email);
     assertTokensCompletos(resultado);
     usuariosCriados.push(resultado.usuario.id);
     const usuario = await prisma.usuario.findUniqueOrThrow({

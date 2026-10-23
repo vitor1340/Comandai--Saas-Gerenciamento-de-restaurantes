@@ -11,6 +11,7 @@ import { AuthService } from './../src/auth/auth.service';
 import { PedidosService } from './../src/pedidos/pedidos.service';
 import { PrismaService } from './../src/prisma/prisma.service';
 import { assertTokensCompletos } from './helpers/assert-tokens-completos';
+import { gerarCpfValido, marcarEmailVerificado } from './helpers/cadastro';
 
 /**
  * Único spec que precisa de um servidor HTTP escutando de verdade
@@ -86,7 +87,9 @@ describe('Pedidos em tempo real via WebSocket (e2e)', () => {
       nomeDono: `Dono ${sufixo}`,
       email,
       senha: 'senha-123456',
+      documento: gerarCpfValido(),
     });
+    await marcarEmailVerificado(prisma, email);
     assertTokensCompletos(resultado);
     usuariosCriados.push(resultado.usuario.id);
 

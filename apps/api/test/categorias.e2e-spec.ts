@@ -6,6 +6,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { PrismaService } from './../src/prisma/prisma.service';
+import { gerarCpfValido, marcarEmailVerificado } from './helpers/cadastro';
 
 interface RespostaAuth {
   accessToken: string;
@@ -61,8 +62,13 @@ describe('Categorias (e2e)', () => {
         nomeDono: 'Dono Categorias',
         email: `dono-categorias-${execucao}@teste.comandai.dev`,
         senha: 'senha-teste-123',
+        documento: gerarCpfValido(),
       })
       .expect(201);
+    await marcarEmailVerificado(
+      prisma,
+      `dono-categorias-${execucao}@teste.comandai.dev`,
+    );
     const corpo = registrar.body as RespostaAuth;
     token = corpo.accessToken;
 

@@ -120,9 +120,32 @@ Os testes e2e rodam contra o Postgres e o Supabase Storage reais configurados no
   validadas), Configurações (identidade visual, logo, endereço, WhatsApp, segurança/2FA).
 - **Multi-tenant real**: isolamento por `restauranteId` em todas as queries e nas rooms do
   WebSocket, coberto por testes automatizados.
+- **Anti-abuso do teste grátis**: cadastro exige CPF/CNPJ válido e único (um teste por
+  documento), e-mail confirmado por link e captcha (Cloudflare Turnstile). Quem entra com
+  Google completa o CPF/CNPJ num onboarding. Enquanto houver pendência, o painel abre mas
+  ações de escrita ficam bloqueadas (`ContaLiberadaGuard`). Rate limit por IP real (inclusive
+  nas chamadas que passam pelo servidor Next, via `INTERNAL_PROXY_SECRET`).
+- **Admin da plataforma** (`/admin`): lista/busca restaurantes (nome, e-mail, CPF/CNPJ, IP de
+  cadastro), suspende/reativa (loja sai do ar) e estende teste grátis. Para virar admin:
+  `UPDATE "Usuario" SET "superAdmin" = true WHERE email = 'seu@email';` direto no banco.
 - **Páginas legais**: Política de Privacidade e Termos de Uso (`/privacidade`, `/termos`) —
   conteúdo com placeholders de razão social/CNPJ/e-mail de contato a preencher antes de
   publicar em produção.
+
+## Checklist de produção (cobrança ligada)
+
+- `DESATIVAR_BLOQUEIO_PLANO` **não** pode estar definida no ambiente da API.
+- Credenciais **de produção** do Mercado Pago (`MERCADOPAGO_ACCESS_TOKEN`,
+  `MERCADOPAGO_WEBHOOK_SECRET`) e webhook cadastrado no painel do Mercado Pago:
+  `{URL_PUBLICA_API}/assinaturas/webhook`, tópico `subscription_preapproval`.
+- `CORS_ORIGIN` em HTTPS (é a base do `back_url` da assinatura e dos links de e-mail).
+- Domínio de envio verificado no Resend (`RESEND_FROM_EMAIL`) — sem isso a confirmação de
+  e-mail não chega em ninguém além da própria conta Resend.
+- `TURNSTILE_SECRET_KEY` (API), `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (web) e o mesmo
+  `INTERNAL_PROXY_SECRET` nos dois apps.
+- Rodar a migration `20261023120000_add_antiabuso_cadastro` (marca os usuários já existentes
+  como e-mail verificado e normaliza e-mails para minúsculas — se houver duas contas que só
+  diferem em maiúsculas, a migration falha e a duplicata precisa ser resolvida antes).
 
 ## CI
 

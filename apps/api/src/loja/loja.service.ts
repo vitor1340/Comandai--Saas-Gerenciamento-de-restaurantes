@@ -44,7 +44,9 @@ export class LojaService {
       },
     });
 
-    if (!restaurante) {
+    // Suspenso pelo admin (spam, golpe, abuso) some do ar como se não
+    // existisse — não dá pra deixar a vitrine pública de pé.
+    if (!restaurante || restaurante.suspensoEm) {
       throw new NotFoundException('Loja não encontrada');
     }
 
@@ -167,10 +169,11 @@ export class LojaService {
         aberto: true,
         statusAssinatura: true,
         trialEndsAt: true,
+        suspensoEm: true,
       },
     });
 
-    if (!restaurante) {
+    if (!restaurante || restaurante.suspensoEm) {
       throw new NotFoundException('Loja não encontrada');
     }
     if (!restaurante.aberto) {
@@ -179,10 +182,11 @@ export class LojaService {
       );
     }
     // Sem plano ativo, o dono não consegue nem ver o pedido no painel
-    // (PlanoAtivoGuard bloqueia a mutação de status) — deixar a loja
+    // (ContaLiberadaGuard bloqueia a mutação de status) — deixar a loja
     // continuar aceitando pedidos só criaria pedidos represados que
-    // ninguém consegue atender. Mesmo kill switch do PlanoAtivoGuard (ver
+    // ninguém consegue atender. Mesmo kill switch do ContaLiberadaGuard (ver
     // comentário lá) — DESATIVAR_BLOQUEIO_PLANO=true libera também aqui.
+    // Não usar em produção com cobrança ativa.
     if (
       process.env.DESATIVAR_BLOQUEIO_PLANO !== 'true' &&
       statusPlanoBloqueiaAcesso(calcularStatusPlano(restaurante))

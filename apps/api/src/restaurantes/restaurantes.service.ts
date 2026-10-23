@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { StatusPedido } from '../../generated/prisma/client';
+import { ConflictException, Injectable } from '@nestjs/common';
+import { Prisma, StatusPedido } from '../../generated/prisma/client';
+import { normalizarDocumento } from '../common/documento.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { CompletarCadastroDto } from './dto/completar-cadastro.dto';
 import { UpdateRestauranteDto } from './dto/update-restaurante.dto';
 import {
   calcularDiasRestantesTeste,
@@ -40,7 +42,40 @@ export class RestaurantesService {
       pedidosNovosCount,
       mercadoPagoConectado: Boolean(restaurante.mercadoPagoAccessToken),
       faixaAssinatura: restaurante.faixaAssinatura,
+      documentoPendente: restaurante.documento === null,
+      suspenso: restaurante.suspensoEm !== null,
     };
+  }
+
+  async completarCadastro(restauranteId: string, dto: CompletarCadastroDto) {
+    const documento = normalizarDocumento(dto.documento);
+
+    // updateMany com `documento: null` no where: só preenche uma vez — trocar
+    // o documento depois abriria brecha pra "liberar" o CPF e reusar em
+    // outra conta.
+    try {
+      const { count } = await this.prisma.restaurante.updateMany({
+        where: { id: restauranteId, documento: null },
+        data: { documento, nome: dto.nomeRestaurante },
+      });
+      if (count === 0) {
+        throw new ConflictException(
+          'O CPF/CNPJ deste restaurante já foi informado.',
+        );
+      }
+    } catch (erro) {
+      if (
+        erro instanceof Prisma.PrismaClientKnownRequestError &&
+        erro.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Já existe um restaurante cadastrado com este CPF/CNPJ. Se ele é seu, entre com a conta original.',
+        );
+      }
+      throw erro;
+    }
+
+    return this.me(restauranteId);
   }
 
   async atualizar(restauranteId: string, dto: UpdateRestauranteDto) {

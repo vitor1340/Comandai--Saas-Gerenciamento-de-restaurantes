@@ -23,10 +23,24 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     profile: Profile,
     done: VerifyCallback,
   ): void {
-    const email = profile.emails?.[0]?.value;
+    const email = profile.emails?.[0]?.value?.trim().toLowerCase();
     if (!email) {
       done(
         new UnauthorizedException('Conta do Google sem e-mail disponível'),
+        false,
+      );
+      return;
+    }
+
+    // O login com Google confia no e-mail pra vincular/criar conta (e marca
+    // o e-mail como verificado) — só vale se o próprio Google o verificou.
+    const emailVerificado = (profile._json as { email_verified?: boolean })
+      .email_verified;
+    if (emailVerificado !== true) {
+      done(
+        new UnauthorizedException(
+          'O e-mail desta conta do Google não está verificado',
+        ),
         false,
       );
       return;

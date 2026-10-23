@@ -6,6 +6,7 @@ import { AppModule } from './../src/app.module';
 import { AuthService } from './../src/auth/auth.service';
 import { PrismaService } from './../src/prisma/prisma.service';
 import { assertTokensCompletos } from './helpers/assert-tokens-completos';
+import { gerarCpfValido, marcarEmailVerificado } from './helpers/cadastro';
 
 /**
  * Testa AuthService.loginOuRegistrarComGoogle() e a troca de código
@@ -78,7 +79,9 @@ describe('Login com Google (e2e)', () => {
       nomeDono: 'Dono Original',
       email,
       senha: 'senha-teste-123',
+      documento: gerarCpfValido(),
     });
+    await marcarEmailVerificado(prisma, email);
     usuariosCriados.push(registrado.usuario.id);
     const usuarioOriginal = await prisma.usuario.findUniqueOrThrow({
       where: { id: registrado.usuario.id },
@@ -105,6 +108,47 @@ describe('Login com Google (e2e)', () => {
       where: { id: usuarioOriginal.restauranteId },
     });
     expect(totalRestaurantes).toBe(1);
+  });
+
+  it('e-mail cadastrado por senha SEM verificação: Google assume a conta, descarta a senha e revoga sessões', async () => {
+    const email = `google-pre-hijack-${execucao}@teste.comandai.dev`;
+
+    // Simula o atacante: cadastra o e-mail da vítima com senha própria e
+    // nunca confirma o e-mail (não chama marcarEmailVerificado).
+    const registrado = await authService.registrar({
+      nomeRestaurante: `Loja Pre Hijack ${execucao}`,
+      nomeDono: 'Atacante',
+      email,
+      senha: 'senha-do-atacante',
+      documento: gerarCpfValido(),
+    });
+    assertTokensCompletos(registrado);
+    usuariosCriados.push(registrado.usuario.id);
+    const original = await prisma.usuario.findUniqueOrThrow({
+      where: { id: registrado.usuario.id },
+    });
+    restaurantesCriados.push(original.restauranteId);
+    expect(original.emailVerificadoEm).toBeNull();
+
+    await authService.loginOuRegistrarComGoogle({
+      googleId: `google-id-pre-hijack-${execucao}`,
+      email,
+      nome: 'Vítima',
+    });
+
+    const depois = await prisma.usuario.findUniqueOrThrow({
+      where: { id: registrado.usuario.id },
+    });
+    expect(depois.senhaHash).toBeNull();
+    expect(depois.emailVerificadoEm).not.toBeNull();
+
+    // O refresh token que o atacante recebeu no cadastro foi revogado.
+    await expect(
+      authService.refresh(registrado.refreshToken),
+    ).rejects.toThrow();
+    await expect(
+      authService.login(email, 'senha-do-atacante'),
+    ).rejects.toThrow();
   });
 
   it('mesmo googleId chamado duas vezes não cria usuário novo', async () => {

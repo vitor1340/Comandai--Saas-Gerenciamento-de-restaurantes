@@ -10,12 +10,12 @@ import {
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthenticatedUser } from '../auth/jwt.types';
-import { PlanoAtivoGuard } from '../restaurantes/plano-ativo.guard';
+import { ContaLiberadaGuard } from '../restaurantes/conta-liberada.guard';
 import { AtualizarStatusPedidoDto } from './dto/atualizar-status-pedido.dto';
 import { ListarPedidosQueryDto } from './dto/listar-pedidos-query.dto';
 import { PedidosService } from './pedidos.service';
 
-// PlanoAtivoGuard só na mutação (atualizarStatus) — leitura (listar,
+// ContaLiberadaGuard só na mutação (atualizarStatus) — leitura (listar,
 // detalhar) continua liberada mesmo sem plano ativo, pra não quebrar o
 // carregamento do painel (ver PlanoStatusBanner no frontend).
 @UseGuards(JwtAuthGuard)
@@ -40,7 +40,7 @@ export class PedidosController {
     return this.pedidosService.detalhar(user.restauranteId, id);
   }
 
-  @UseGuards(PlanoAtivoGuard)
+  @UseGuards(ContaLiberadaGuard)
   @Patch(':id/status')
   atualizarStatus(
     @CurrentUser() user: AuthenticatedUser,

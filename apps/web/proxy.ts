@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { SESSION_COOKIE } from './lib/auth-cookie';
 import { REFRESH_COOKIE, clearRefreshCookie, setRefreshCookie } from './lib/refresh-cookie';
+import { headersProxyApi } from './lib/api-proxy-headers';
 
 const ROTAS_PUBLICAS = [
   '/login',
@@ -13,7 +14,7 @@ const ROTAS_PUBLICAS = [
 ];
 // Diferente de ROTAS_PUBLICAS: não expulsam um usuário já logado (conteúdo
 // estático que faz sentido consultar estando autenticado ou não).
-const ROTAS_SEMPRE_ACESSIVEIS = ['/privacidade', '/termos', '/planos'];
+const ROTAS_SEMPRE_ACESSIVEIS = ['/privacidade', '/termos', '/planos', '/verificar-email'];
 const PREFIXO_LOJA_PUBLICA = '/loja/';
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
 
@@ -57,7 +58,7 @@ async function renovarSessao(
   try {
     const resposta = await fetch(`${API_URL}/auth/refresh`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: headersProxyApi(request),
       body: JSON.stringify({ refreshToken }),
     });
 

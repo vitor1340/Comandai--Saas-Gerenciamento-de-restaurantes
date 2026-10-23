@@ -36,13 +36,20 @@ export default function PoliticaPrivacidadePage() {
             <p className="mb-2 font-medium text-ink-primary">De Parceiros (donos e equipe do restaurante):</p>
             <ul className="mb-3 list-disc space-y-1 pl-5">
               <li>Nome, e-mail e senha (ou identidade vinculada via login com Google);</li>
+              <li>
+                CPF ou CNPJ do responsável pelo restaurante, usado para identificar o cadastro e
+                limitar o teste grátis a um por documento;
+              </li>
               <li>Dados do restaurante: nome, endereço, WhatsApp, horário de funcionamento, cardápio e imagens enviadas;</li>
               <li>
                 Dados de conexão com o Mercado Pago (token de acesso OAuth, armazenado
                 criptografado), quando o Parceiro conecta uma conta para receber pagamentos
                 online;
               </li>
-              <li>Registros técnicos de acesso (endereço IP, navegador, data e hora de login).</li>
+              <li>
+                Registros técnicos de acesso (endereço IP de cadastro e de login, navegador, data e
+                hora), usados também para prevenir fraude e abuso.
+              </li>
             </ul>
             <p className="mb-2 font-medium text-ink-primary">De Clientes (quem faz pedidos na loja pública):</p>
             <ul className="list-disc space-y-1 pl-5">

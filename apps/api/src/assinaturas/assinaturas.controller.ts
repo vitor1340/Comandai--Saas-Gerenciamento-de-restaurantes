@@ -18,7 +18,7 @@ import { AssinaturasService } from './assinaturas.service';
 import { IniciarAssinaturaDto } from './dto/iniciar-assinatura.dto';
 import { TrocarFaixaDto } from './dto/trocar-faixa.dto';
 
-// Sem PlanoAtivoGuard de propósito: um dono com trial vencido ou assinatura
+// Sem ContaLiberadaGuard de propósito: um dono com trial vencido ou assinatura
 // cancelada precisa continuar conseguindo assinar/reativar por aqui.
 // Mutações restritas a DONO (@Roles) — é dinheiro/cobrança da própria
 // plataforma, decisão que não deveria ficar disponível pra GERENTE/ATENDENTE
